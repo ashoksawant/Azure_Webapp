@@ -23,4 +23,4 @@ This project demonstrates how to deploy an Azure Web App for a Python applicatio
 
 ```bash
 git clone <repository-url>
-cd <repository-directory>```
+cd <repository-directory>
