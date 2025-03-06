@@ -1,0 +1,108 @@
+trigger:
+- dev
+
+stages:
+  - stage: Build
+    jobs:
+      - job: Build
+        pool: 
+          name: Default
+        steps:
+          - script: |
+              sudo apt-get update -y
+              # Install zip module
+              sudo apt install -y zip
+          - task: TerraformInstaller@1
+            displayName: Install terraform 
+            inputs:
+              terraformVersion: 'latest'
+          - task: TerraformTaskV4@4
+            displayName: Terraform init
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              backendServiceArm: 'Azure_connect'
+              backendAzureRmResourceGroupName: '1-29b4e32e-playground-sandbox'
+              backendAzureRmStorageAccountName: 'azuredevopslabstrg'
+              backendAzureRmContainerName: 'container1'
+              backendAzureRmKey: 'terraform.tfstate'
+          - task: TerraformTaskV4@4
+            displayName: Terraform validate
+            inputs:
+              provider: 'azurerm'
+              command: 'validate'
+          - task: TerraformTaskV4@4
+            displayName: Terraform format
+            inputs:
+              provider: 'azurerm'
+              command: 'custom'
+              outputTo: 'console'
+              customCommand: 'fmt'
+              environmentServiceNameAzureRM: 'Azure_connect'
+          - task: TerraformTaskV4@4
+            displayName: Terraform plan
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              commandOptions: '-out $(Build.SourcesDirectory)/tfplanfile'  # Ensure this is correct
+              environmentServiceNameAzureRM: 'Azure_connect'
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/tfplanfile'  # Ensure this is correct
+              ArtifactName: 'tfplanfile'
+              publishLocation: 'Container'
+  - stage: Deploy
+    jobs:
+    - job: ManualApproval
+      displayName: 'Approval before deployment'
+      pool: server
+      steps:
+         - task: ManualValidation@1
+           inputs:
+             notifyUsers: 'cloud_user_p_f4c9ce95@realhandsonlabs.com'
+             instructions: '''Please validate the build configuration and resume'''
+             
+    - job: Deploy
+      pool:
+        name: Default
+      steps:
+    # Step 1: Install zip utility
+        - script: |
+            sudo apt-get update -y
+            sudo apt install -y zip
+          displayName: 'Install zip utility'
+
+        # Step 2: Install Terraform using the TerraformInstaller task
+        - task: TerraformInstaller@1
+          displayName: 'Install Terraform'
+          inputs:
+            terraformVersion: 'latest'
+
+        # Step 3: Download the build artifacts
+        - task: DownloadBuildArtifacts@1
+          inputs:
+            buildType: 'current'
+            downloadType: 'single'
+            artifactName: 'tfplanfile'
+            downloadPath: '$(System.ArtifactsDirectory)'
+
+        # Step 4: Terraform Init
+        - task: TerraformTaskV4@4
+          displayName: 'Terraform Init'
+          inputs:
+            provider: 'azurerm'
+            command: 'init'
+            backendServiceArm: 'Azure_connect'
+            backendAzureRmResourceGroupName: '1-29b4e32e-playground-sandbox'
+            backendAzureRmStorageAccountName: 'azuredevopslabstrg'
+            backendAzureRmContainerName: 'container1'
+            backendAzureRmKey: 'terraform.tfstate'
+
+        # Step 5: Terraform Apply
+        - task: TerraformTaskV4@4
+          displayName: 'Terraform Apply'
+          inputs:
+            provider: 'azurerm'
+            command: 'apply'
+            commandOptions: '-auto-approve'
+            environmentServiceNameAzureRM: 'Azure_connect'
